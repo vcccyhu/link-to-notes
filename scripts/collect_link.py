@@ -93,7 +93,7 @@ def main():
         cover=temp/'cover.jpg'
         convert_cover(original,cover)
         method='小红书视频绑定的中文 source 字幕（自动识别，未逐字人工校对）'
-        proof=f'字幕来源：该视频页面绑定的中文平台字幕。共 {report["cue_count"]} 段，约 {report["characters"]} 字符；起止 {report["start_seconds"]:.3f}–{report["end_seconds"]:.3f} 秒；平台视频时长 {m.get("duration_seconds")} 秒。最大内部空档 {report['max_gap_seconds']:.3f} 秒。已检查格式、顺序与首尾覆盖；未经逐字人工校对，可能有同音字错误。\n\n'
+        proof=f'字幕来源：该视频页面绑定的中文平台字幕。共 {report["cue_count"]} 段，约 {report["characters"]} 字符；起止 {report["start_seconds"]:.3f}–{report["end_seconds"]:.3f} 秒；平台视频时长 {m.get("duration_seconds")} 秒。最大内部空档 {report["max_gap_seconds"]:.3f} 秒。已检查格式、顺序与首尾覆盖；未经逐字人工校对，可能有同音字错误。\n\n'
         path=save_note(m,proof+transcript,cover,args.root,method)
         saved=yaml.safe_load(path.read_text(encoding='utf-8').split('---',2)[1])
         print(json.dumps({'status':'partial' if saved['status']=='partial' else 'saved','classification_review_due':classification_due(args.root),'path':str(path),'title':m['title'],'author':m['author'],'published_at':m['published_at'],'likes':m['likes'],**report},ensure_ascii=False))
