@@ -1,0 +1,35 @@
+filters:
+  and:
+    - 'file.inFolder("素材笔记")'
+    - 'note.note_id != null'
+formulas:
+  标题: 'link(file.path, title)'
+views:
+  - type: table
+    name: 全部素材
+    order:
+      - formula.标题
+      - author
+      - 主分类
+      - 子主题
+      - 本次分析
+      - status
+  - type: table
+    name: 按分类
+    groupBy:
+      property: 主分类
+      direction: ASC
+    order:
+      - formula.标题
+      - author
+      - 主分类
+      - 本次分析
+  - type: table
+    name: 本次分析
+    filters:
+      and:
+        - 'note["本次分析"] == true'
+    order:
+      - formula.标题
+      - author
+      - 主分类
