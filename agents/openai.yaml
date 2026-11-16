@@ -1,0 +1,4 @@
+interface:
+  display_name: "小红书视频素材库"
+  short_description: "将小红书视频整理为包含封面、资料和全文口播的本地可搜索笔记"
+  default_prompt: "使用 $xiaohongshu-video-library 收纳这条小红书视频，保存封面、资料和音频文字稿。"
