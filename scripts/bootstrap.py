@@ -57,8 +57,7 @@ def main():
  pref=env/'xhs-network.json';data=json.loads(pref.read_text(encoding='utf-8')) if pref.is_file() else {}
  if a.remember_interface:
   data={'interface':validate_interface(a.remember_interface)}
-  pref.write_text(json.dumps(data,ensure_ascii=False)+'
-',encoding='utf-8')
+  pref.write_text(json.dumps(data,ensure_ascii=False)+'\n',encoding='utf-8')
  interface=data.get('interface')
  if interface:validate_interface(interface)
  if a.run:
