@@ -22,6 +22,19 @@ def command_args(script,args,interface):
  if script=='collect_link' and interface and '--interface' not in args:return args+['--interface',interface]
  return args
 
+NO_PROXY_DOMAINS=['xiaohongshu.com','.xiaohongshu.com','xhslink.cn','xhslink.com','.xhscdn.com']
+
+def collection_env(script,data):
+ env=os.environ.copy()
+ if script!='collect_link' or not data.get('no_proxy_domains'):return env
+ domains=data['no_proxy_domains']
+ if not isinstance(domains,list) or any(d not in NO_PROXY_DOMAINS for d in domains):
+  raise ValueError('仅允许保存小红书相关域名的本机代理例外；不能使用通配符或其他站点')
+ existing=env.get('NO_PROXY') or env.get('no_proxy','')
+ value=','.join(dict.fromkeys([x for x in existing.split(',') if x]+domains))
+ env['NO_PROXY']=value;env['no_proxy']=value
+ return env
+
 def supported_python():
  candidates=[sys.executable]+[shutil.which(n) for n in ['python3.12','python3.11','python3.10','python3','python']]
  candidates += [str(Path.home()/'.local/bin'/n) for n in ['python3.12','python3.11','python3.10']]
@@ -39,6 +52,7 @@ def main():
  p.add_argument('--asr',action='store_true',help='仅setup时额外安装转写依赖；不安装ffmpeg')
  p.add_argument('--check',action='store_true')
  p.add_argument('--remember-interface',help='保存本机已核实可用接口；不修改系统网络')
+ p.add_argument('--remember-no-proxy',action='store_true',help='仅在本机已核实并获准直连时保存小红书域名代理例外')
  p.add_argument('--run',choices=['doctor','collect_link','library_config','transcribe'])
  p.add_argument('args',nargs=argparse.REMAINDER)
  a=p.parse_args();env=a.env.expanduser().resolve();py=env/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
@@ -56,19 +70,21 @@ def main():
   emit('runtime_invalid',python=str(py),next_step='运行 scripts/bootstrap.py --setup 修复依赖，不要改用随机系统Python');return 2
  pref=env/'xhs-network.json';data=json.loads(pref.read_text(encoding='utf-8')) if pref.is_file() else {}
  if a.remember_interface:
-  data={'interface':validate_interface(a.remember_interface)}
+  data['interface']=validate_interface(a.remember_interface)
+ if a.remember_no_proxy:data['no_proxy_domains']=NO_PROXY_DOMAINS.copy()
+ if a.remember_interface or a.remember_no_proxy:
   pref.write_text(json.dumps(data,ensure_ascii=False)+'\n',encoding='utf-8')
  interface=data.get('interface')
  if interface:validate_interface(interface)
  if a.run:
   args=a.args[1:] if a.args[:1]==['--'] else a.args
-  return subprocess.run([str(py),str(ROOT/'scripts'/(a.run+'.py'))]+command_args(a.run,args,interface)).returncode
+  return subprocess.run([str(py),str(ROOT/'scripts'/(a.run+'.py'))]+command_args(a.run,args,interface),env=collection_env(a.run,data)).returncode
  cfg=Path(os.environ.get('XHS_LIBRARY_CONFIG',str(Path.home()/'.config/xiaohongshu-video-library/config.json'))).expanduser()
  value=os.environ.get('XHS_LIBRARY_ROOT')
  if not value and cfg.is_file():value=json.loads(cfg.read_text(encoding='utf-8')).get('root')
  write=write_probe(Path(value).expanduser()) if value else {'ok':False,'error_type':'library_not_configured'}
  emit('ready' if write['ok'] else 'library_check_failed',python=str(py),library_root=value,write_probe=write,
-      interface=interface,network='未实测；有访问权限不代表DNS/TLS可用',skill_version=(ROOT/'VERSION').read_text().strip())
+      interface=interface,no_proxy_domains=data.get('no_proxy_domains',[]),network='未实测；有访问权限不代表DNS/TLS可用',skill_version=(ROOT/'VERSION').read_text().strip())
  return 0 if write['ok'] else 2
 
 if __name__=='__main__':
