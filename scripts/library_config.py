@@ -30,7 +30,7 @@ def initialize(root,categories=None,config_path=None):
  cats=list(dict.fromkeys([c.strip() for c in (categories or []) if c.strip()]+['待分类']))
  for c in cats:
   if len(c)>80 or any(ord(x)<32 for x in c):raise ValueError('分类名称应为80字以内的单行文本')
- for name in ['素材笔记','封面附件','索引','分析清单','测试记录']:(root/name).mkdir(parents=True,exist_ok=True)
+ for name in ['素材笔记','封面附件','索引']:(root/name).mkdir(parents=True,exist_ok=True)
  assets=Path(__file__).resolve().parents[1]/'assets/vault'
  for src in assets.rglob('*'):
   if src.is_file():
