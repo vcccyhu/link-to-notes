@@ -25,10 +25,15 @@ def now():
     return datetime.now(TZ).isoformat(timespec='seconds')
 
 def input_url(text):
-    for match in re.finditer(r'https?://[^\s<>"\u201c\u201d]+',text):
+    # Markdown labels and destinations are separate candidates; keep signed query bytes unchanged.
+    for match in re.finditer(r'https?://[^\s<>"\u201c\u201d\[\]()]+',text):
         url = match.group().rstrip('。；，、）)]}')
-        p = urlparse(url)
-        if p.hostname in HOSTS and not p.username and not p.password and p.port in (None,80,443):
+        try:
+            p = urlparse(url)
+            valid = p.hostname in HOSTS and not p.username and not p.password and p.port in (None,80,443)
+        except ValueError:
+            continue
+        if valid:
             return url
     raise ValueError('没有找到受支持的小红书链接')
 
