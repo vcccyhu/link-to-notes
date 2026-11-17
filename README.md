@@ -1,93 +1,98 @@
-"""Reusable local runtime. Setup is explicit; check never installs or changes security settings."""
-import argparse,importlib.util,json,os,shutil,socket,subprocess,sys,tempfile
-from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1]
+# Link to Notes｜小红书视频素材库 Skill
 
-def emit(stage,**data):
- print(json.dumps(dict(stage=stage,**data),ensure_ascii=False,indent=2))
+**0.2.3-preview：个人项目预发布版。32项本地程序检查、真实小红书样本、WorkBuddy主流程和Obsidian模板已有实测；Windows、Linux、豆包与陌生用户盲测未验证。**
 
-def write_probe(folder):
- try:
-  with tempfile.NamedTemporaryFile(prefix='.xhs-write-check-',dir=str(folder),delete=True) as f:
-   f.write(b'check');f.flush()
-  return {'ok':True}
- except OSError as e:return {'ok':False,'error_type':type(e).__name__}
+项目背景和个人贡献见 [项目说明](docs/PROJECT.md)，逐项证据与限制见 [发布验收报告](docs/RELEASE_TEST_REPORT.md)，输出格式见 [自制演示](examples/README.md)。
 
-def validate_interface(value):
- if value not in [name for _,name in socket.if_nameindex()]:
-  raise ValueError('指定网卡不在本机接口列表中；不要复制其他电脑的网卡名')
- return value
+把小红书视频分享文本整理为本地可检索笔记：标题、作者、封面、发布时间、点赞快照、原链接和真实文字稿集中保存。按“标题 — 作者”命名，自定义分类。适合素材积累及选定一批视频分析。它不是独立App，也不保证平台每一条视频都能取得。
 
-def command_args(script,args,interface):
- if script=='collect_link' and interface and '--interface' not in args:return args+['--interface',interface]
- return args
+## 阅读格式与图文支持
 
-NO_PROXY_DOMAINS=['xiaohongshu.com','.xiaohongshu.com','xhslink.cn','xhslink.com','.xhscdn.com']
+默认输出易读标题、封面资料、AI总结、来源正文和备注。原标题保留，平台ID仅作后台去重。图文笔记由智能体读取全部图片后生成逐页要点，并保存来源图片，不冒充视频文字稿。详见 [阅读格式](references/reading-format.md)。
 
-def collection_env(script,data):
- env=os.environ.copy()
- if script!='collect_link' or not data.get('no_proxy_domains'):return env
- domains=data['no_proxy_domains']
- if not isinstance(domains,list) or any(d not in NO_PROXY_DOMAINS for d in domains):
-  raise ValueError('仅允许保存小红书相关域名的本机代理例外；不能使用通配符或其他站点')
- existing=env.get('NO_PROXY') or env.get('no_proxy','')
- value=','.join(dict.fromkeys([x for x in existing.split(',') if x]+domains))
- env['NO_PROXY']=value;env['no_proxy']=value
- return env
+本次更新为Skill工作流说明；采集程序仍只自动处理带中文字幕的视频。总结、阅读标题、图文及无字幕后备需要具有相应能力的智能体执行。既有0.2.1的32项程序检查不能代替0.2.2在所有宿主重新安装验收。
 
-def supported_python():
- candidates=[sys.executable]+[shutil.which(n) for n in ['python3.12','python3.11','python3.10','python3','python']]
- candidates += [str(Path.home()/'.local/bin'/n) for n in ['python3.12','python3.11','python3.10']]
- for candidate in dict.fromkeys(x for x in candidates if x):
-  try:
-   r=subprocess.run([candidate,'-c','import sys;sys.exit(0 if sys.version_info >= (3,10) else 1)'],capture_output=True,timeout=10)
-   if r.returncode==0:return candidate
-  except (OSError,subprocess.TimeoutExpired):pass
- raise ValueError('未找到Python 3.10以上；先从官方渠道安装Python，再运行首次设置')
+## 跨窗口启动与权限
 
-def main():
- p=argparse.ArgumentParser(description=__doc__)
- p.add_argument('--env',type=Path,default=ROOT/'.venv')
- p.add_argument('--setup',action='store_true')
- p.add_argument('--asr',action='store_true',help='仅setup时额外安装转写依赖；不安装ffmpeg')
- p.add_argument('--check',action='store_true')
- p.add_argument('--remember-interface',help='保存本机已核实可用接口；不修改系统网络')
- p.add_argument('--remember-no-proxy',action='store_true',help='仅在本机已核实并获准直连时保存小红书域名代理例外')
- p.add_argument('--run',choices=['doctor','collect_link','library_config','transcribe'])
- p.add_argument('args',nargs=argparse.REMAINDER)
- a=p.parse_args();env=a.env.expanduser().resolve();py=env/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
- if a.asr and not a.setup:p.error('--asr需要--setup')
- if a.setup:
-  if not py.is_file():subprocess.run([supported_python(),'-m','venv',str(env)],check=True)
-  uv=shutil.which('uv')
-  install=[uv,'pip','install','--python',str(py)] if uv else [str(py),'-m','pip','install']
-  subprocess.run(install+['-r',str(ROOT/'requirements.txt')],check=True)
-  if a.asr:subprocess.run(install+['-r',str(ROOT/'requirements-asr.txt')],check=True)
- if not py.is_file():
-  emit('runtime_missing',next_step='使用可用Python运行 scripts/bootstrap.py --setup；安装只需首次执行或依赖损坏时修复');return 2
- probe=subprocess.run([str(py),'-c','import sys,PIL,yaml;assert sys.version_info >= (3,10)'],capture_output=True)
- if probe.returncode:
-  emit('runtime_invalid',python=str(py),next_step='运行 scripts/bootstrap.py --setup 修复依赖，不要改用随机系统Python');return 2
- pref=env/'xhs-network.json';data=json.loads(pref.read_text(encoding='utf-8')) if pref.is_file() else {}
- if a.remember_interface:
-  data['interface']=validate_interface(a.remember_interface)
- if a.remember_no_proxy:data['no_proxy_domains']=NO_PROXY_DOMAINS.copy()
- if a.remember_interface or a.remember_no_proxy:
-  pref.write_text(json.dumps(data,ensure_ascii=False)+'\n',encoding='utf-8')
- interface=data.get('interface')
- if interface:validate_interface(interface)
- if a.run:
-  args=a.args[1:] if a.args[:1]==['--'] else a.args
-  return subprocess.run([str(py),str(ROOT/'scripts'/(a.run+'.py'))]+command_args(a.run,args,interface),env=collection_env(a.run,data)).returncode
- cfg=Path(os.environ.get('XHS_LIBRARY_CONFIG',str(Path.home()/'.config/xiaohongshu-video-library/config.json'))).expanduser()
- value=os.environ.get('XHS_LIBRARY_ROOT')
- if not value and cfg.is_file():value=json.loads(cfg.read_text(encoding='utf-8')).get('root')
- write=write_probe(Path(value).expanduser()) if value else {'ok':False,'error_type':'library_not_configured'}
- emit('ready' if write['ok'] else 'library_check_failed',python=str(py),library_root=value,write_probe=write,
-      interface=interface,no_proxy_domains=data.get('no_proxy_domains',[]),network='未实测；有访问权限不代表DNS/TLS可用',skill_version=(ROOT/'VERSION').read_text().strip())
- return 0 if write['ok'] else 2
+首次运行 `python scripts/bootstrap.py --setup`，后续窗口统一使用 `python scripts/bootstrap.py --check` 和 `python scripts/bootstrap.py --run collect_link -- '分享文案'`。它会复用Skill目录内的独立环境；缺依赖会给出修复步骤。不会自动改变系统代理、安全设置或宿主权限。首次安装与需要开放的具体权限见 [启动与权限说明](references/setup.md)。
 
-if __name__=='__main__':
- try:sys.exit(main())
- except (OSError,ValueError,subprocess.CalledProcessError) as e:
-  emit('setup_or_runtime_failed',error_type=type(e).__name__,next_step='检查Python、安装联网、配置及本机网卡；不得将网络错误直接归因为权限不足');sys.exit(2)
+## 安装与首次使用
+
+1. 下载或克隆本仓库。GitHub仓库名为 `link-to-notes`，导入前将解压后的项目文件夹命名为 `xiaohongshu-video-library`，再把完整文件夹导入支持本地Skill的智能体。Codex可放到用户的 `.codex/skills/xiaohongshu-video-library/` 目录；其他宿主按自己的导入方式，不能导入时先参照兼容性文档做能力测试。
+2. 需要Python 3.10以上、curl，以及基础Python依赖。建议在本文件夹建独立虚拟环境：
+
+```sh
+python -m venv .venv
+```
+
+Windows激活：`.venv\Scripts\Activate.ps1`；macOS/Linux激活：`source .venv/bin/activate`。若系统命令是 `python3`，使用它代替 `python`。激活后：
+
+```sh
+python -m pip install -r requirements.txt
+python scripts/doctor.py
+```
+
+doctor首次提示尚未设置位置是正常的。让智能体使用这个虚拟环境的Python，不能假定宿主自动激活。doctor只检查，不自动安装。
+
+3. 告诉智能体：“使用这个Skill，先把我的素材库设在我指定的文件夹；分类先待分类。”或者给出自己的类别。也可手动执行：
+
+```sh
+python scripts/library_config.py init --root '你选择的素材库文件夹' --categories '英语学习' '销售工作'
+```
+
+不加类别即先待分类；选自媒体预设用 `--preset creator`，二者不同时用。目录允许中文和空格。初始化只创建缺失文件，重跑不覆盖已有配置和规则。后续修改类别时同步素材库中的 `索引/收纳设置.json` 和 `索引/分类规则.md`。
+
+4. 发整段分享文本并说“收纳这条”。手动检查也可运行：
+
+```sh
+python scripts/collect_link.py '这里粘贴整段小红书分享文本'
+```
+
+只有绑定中文字幕的路径已在采集程序中自动化；无字幕时智能体需要继续执行音频后备，不是脚本自行完成。详细步骤见 [工作流](references/workflow.md)。
+
+测试时可用 `library_config.py init --root '测试文件夹' --config '独立配置.json'`，然后只在本次进程设置 `XHS_LIBRARY_CONFIG` 指向该文件，避免覆盖原有配置。也可始终显式传 `--root`。
+
+## 无字幕转写的可选依赖
+
+需要ffmpeg和ffprobe在可执行路径中，以及：
+
+```sh
+python -m pip install -r requirements-asr.txt
+```
+
+ffmpeg请从官方发行渠道或所用系统的软件包管理器安装。首次转写需要联网下载模型，会用CPU、内存、临时磁盘；模型正常退出后删除，依赖安装缓存不会自动删除。输出是自动识别稿，需核对漏句，不是保证准确的人工逐字稿。
+
+## 文件放在哪里
+
+首次选择的位置保存为使用者本地的 `.config/xiaohongshu-video-library/config.json`，不包含在公开包里。优先级：显式 `--root`、环境变量 `XHS_LIBRARY_ROOT`、本地配置。`XHS_LIBRARY_CONFIG`可覆盖配置文件位置。没有设置时停止，不擅自保存到系统目录。
+
+素材目录包含素材笔记、封面附件、索引、分析清单和测试记录。普通UTF-8 Markdown，无密码；Obsidian可选。需要总览时把素材库文件夹作为Obsidian仓库打开，使用支持Bases功能的版本；本版模板已在Obsidian 1.15.1本机空白仓库显示和筛选通过，跨机器仍待验收。不用Obsidian可直接打开Markdown与文字索引。
+
+已有笔记不会因更新Skill而重装。保存前按平台ID去重，保留人工备注。当前不支持并发写同一素材库，批量收纳应逐条执行。
+
+## 分类与分析
+
+类别由使用者决定；先待分类也可以。延后分类模式累计10条时提示复核，提出方案后等待用户确认，不强制自动移动文件。分类按本条主线与用途判断，作者单独记录。
+
+总览勾选“本次分析”或直接给出标题；智能体先固定本轮清单，再只分析选中的视频。分类属性与正文表格同步更新。
+
+## 支持范围与发布边界
+
+- 小红书短链接、完整分享文本、具体笔记链接：已有本机样本验证；平台结构、网络环境和登录状态变化可能失败。
+- 音频识别：本地英语、中文样本验证；真实完全无字幕小红书端到端自动切换仍待验收。
+- 抖音：仅一条人工辅助样本成功，未集成通用支持。
+- WorkBuddy 5.11.3 / macOS 26.5.1：已安装0.2.0-preview的主流程真实验收通过，网络需单次诊断；本次0.2.1辅助程序的测试范围按报告记录。豆包、Windows与Linux仍**未验证**。参照 [兼容性与测试表](references/compatibility.md)，不承诺一个Skill文件即可在所有产品使用。
+
+## 测试与分享
+
+```sh
+python -m unittest discover -s tests -v
+```
+
+完整回归包含ffmpeg音频标准化测试，需要安装可选转写依赖。测试仅使用自制合成数据；不访问真实账号。结果见 [修改记录](CHANGELOG.md)，接下来的发布验收见 [后续计划](docs/NEXT_STEPS.md)。
+
+公开包不包含作者的素材库、实际视频全文、浏览器数据、登录凭据或本地配置。只收纳自己有权处理的内容，向外分享素材另行确认授权。本项目的MIT许可证覆盖代码与模板，不授予第三方视频素材的使用权。依赖不随包分发，遵循各自许可证。
+
+## 0.2.3改进
+
+修复Markdown链接识别，增加仅本机显式选择的网络请求偏好复用；新库默认只有素材笔记、封面附件、索引三个目录，其余按需创建。既有资料不会因升级删除。总结、分类与验证完成后明确停止；历史报告不作为新任务。自动化程序仍不负责生成AI总结，智能体需执行该步骤。此版本的停止规则不能保证消除宿主模型故障。
